@@ -10,10 +10,14 @@
 
 #ifndef ARDUINO_ESP32_DMA_SPI_NAMESPACE_BEGIN
 #define ARDUINO_ESP32_DMA_SPI_NAMESPACE_BEGIN \
-    namespace arduino {                       \
-    namespace esp32 {                         \
-        namespace spi {                       \
-            namespace dma {
+    namespace arduino                         \
+    {                                         \
+        namespace esp32                       \
+        {                                     \
+            namespace spi                     \
+            {                                 \
+                namespace dma                 \
+                {
 #endif
 #ifndef ARDUINO_ESP32_DMA_SPI_NAMESPACE_END
 #define ARDUINO_ESP32_DMA_SPI_NAMESPACE_END \
@@ -29,24 +33,24 @@ static constexpr const char *TAG = "ESP32DMASPISlave";
 static constexpr int SPI_SLAVE_TASK_STASCK_SIZE = 1024 * 2;
 static constexpr int SPI_SLAVE_TASK_PRIORITY = 5;
 
-static QueueHandle_t s_trans_queue_handle {NULL};
+static QueueHandle_t s_trans_queue_handle{NULL};
 static constexpr int SEND_TRANS_QUEUE_TIMEOUT_TICKS = pdMS_TO_TICKS(5000);
 static constexpr int RECV_TRANS_QUEUE_TIMEOUT_TICKS = pdMS_TO_TICKS(5000);
-static QueueHandle_t s_trans_result_handle {NULL};
+static QueueHandle_t s_trans_result_handle{NULL};
 static constexpr int SEND_TRANS_RESULT_TIMEOUT_TICKS = pdMS_TO_TICKS(5000);
 static constexpr int RECV_TRANS_RESULT_TIMEOUT_TICKS = 0;
-static QueueHandle_t s_trans_error_handle {NULL};
+static QueueHandle_t s_trans_error_handle{NULL};
 static constexpr int SEND_TRANS_ERROR_TIMEOUT_TICKS = pdMS_TO_TICKS(5000);
 static constexpr int RECV_TRANS_ERROR_TIMEOUT_TICKS = 0;
-static QueueHandle_t s_in_flight_mailbox_handle {NULL};
+static QueueHandle_t s_in_flight_mailbox_handle{NULL};
 
-using spi_slave_user_cb_t = std::function<void(spi_slave_transaction_t*, void*)>;
+using spi_slave_user_cb_t = std::function<void(spi_slave_transaction_t *, void *)>;
 
-void spi_slave_post_setup_cb(spi_slave_transaction_t* trans);
-void spi_slave_post_trans_cb(spi_slave_transaction_t* trans);
+void spi_slave_post_setup_cb(spi_slave_transaction_t *trans);
+void spi_slave_post_trans_cb(spi_slave_transaction_t *trans);
 struct spi_slave_context_t
 {
-    spi_slave_interface_config_t if_cfg {
+    spi_slave_interface_config_t if_cfg{
         .spics_io_num = SS,
         .flags = 0,
         .queue_size = 1,
@@ -54,17 +58,17 @@ struct spi_slave_context_t
         .post_setup_cb = spi_slave_post_setup_cb,
         .post_trans_cb = spi_slave_post_trans_cb,
     };
-    spi_bus_config_t bus_cfg {
+    spi_bus_config_t bus_cfg{
         .mosi_io_num = MOSI, // union with data0_io_num
         .miso_io_num = MISO, // union with data1_io_num
         .sclk_io_num = SCK,
-        .data2_io_num = -1,  // union with quadwp_io_num
-        .data3_io_num = -1,  // union with quadhd_io_num
+        .data2_io_num = -1, // union with quadwp_io_num
+        .data3_io_num = -1, // union with quadhd_io_num
         .data4_io_num = -1,
         .data5_io_num = -1,
         .data6_io_num = -1,
         .data7_io_num = -1,
-        .max_transfer_sz = 4092,  // default: 4092 if DMA enabled, SOC_SPI_MAXIMUM_BUFFER_SIZE if DMA disabled
+        .max_transfer_sz = 4092, // default: 4092 if DMA enabled, SOC_SPI_MAXIMUM_BUFFER_SIZE if DMA disabled
         .flags = SPICOMMON_BUSFLAG_SLAVE,
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
         .isr_cpu_id = INTR_CPU_ID_AUTO,
@@ -73,9 +77,9 @@ struct spi_slave_context_t
 #endif
         .intr_flags = 0,
     };
-    spi_host_device_t host {SPI2_HOST};
-    int dma_chan {SPI_DMA_CH_AUTO};  // must be 1, 2 or AUTO
-    TaskHandle_t main_task_handle {NULL};
+    spi_host_device_t host{SPI2_HOST};
+    int dma_chan{SPI_DMA_CH_AUTO}; // must be 1, 2 or AUTO
+    TaskHandle_t main_task_handle{NULL};
 };
 
 struct spi_transaction_context_t
@@ -87,141 +91,143 @@ struct spi_transaction_context_t
 
 struct spi_slave_cb_user_context_t
 {
-    struct {
+    struct
+    {
         spi_slave_user_cb_t user_cb;
         void *user_arg;
     } post_setup;
-    struct {
+    struct
+    {
         spi_slave_user_cb_t user_cb;
         void *user_arg;
     } post_trans;
 };
 
-void IRAM_ATTR spi_slave_post_setup_cb(spi_slave_transaction_t* trans)
-{
-    spi_slave_cb_user_context_t *user_ctx = static_cast<spi_slave_cb_user_context_t*>(trans->user);
-    if (user_ctx->post_setup.user_cb) {
-        user_ctx->post_setup.user_cb(trans, user_ctx->post_setup.user_arg);
-    }
-}
+// void IRAM_ATTR spi_slave_post_setup_cb(spi_slave_transaction_t* trans)
+// {
+//     spi_slave_cb_user_context_t *user_ctx = static_cast<spi_slave_cb_user_context_t*>(trans->user);
+//     if (user_ctx->post_setup.user_cb) {
+//         user_ctx->post_setup.user_cb(trans, user_ctx->post_setup.user_arg);
+//     }
+// }
 
-void IRAM_ATTR spi_slave_post_trans_cb(spi_slave_transaction_t* trans)
-{
-    spi_slave_cb_user_context_t *user_ctx = static_cast<spi_slave_cb_user_context_t*>(trans->user);
-    if (user_ctx->post_trans.user_cb) {
-        user_ctx->post_trans.user_cb(trans, user_ctx->post_trans.user_arg);
-    }
-}
+// void IRAM_ATTR spi_slave_post_trans_cb(spi_slave_transaction_t* trans)
+// {
+//     spi_slave_cb_user_context_t *user_ctx = static_cast<spi_slave_cb_user_context_t*>(trans->user);
+//     if (user_ctx->post_trans.user_cb) {
+//         user_ctx->post_trans.user_cb(trans, user_ctx->post_trans.user_arg);
+//     }
+// }
 
-void spi_slave_task(void *arg)
-{
-    ESP_LOGD(TAG, "spi_slave_task start");
+void spi_slave_task(void *arg);
+// {
+//     ESP_LOGD(TAG, "spi_slave_task start");
 
-    spi_slave_context_t *ctx = static_cast<spi_slave_context_t*>(arg);
+//     spi_slave_context_t *ctx = static_cast<spi_slave_context_t*>(arg);
 
-    // initialize spi slave
-    esp_err_t err = spi_slave_initialize(ctx->host, &ctx->bus_cfg, &ctx->if_cfg, ctx->dma_chan);
-    assert(err == ESP_OK);
+//     // initialize spi slave
+//     esp_err_t err = spi_slave_initialize(ctx->host, &ctx->bus_cfg, &ctx->if_cfg, ctx->dma_chan);
+//     assert(err == ESP_OK);
 
-    // initialize queues
-    s_trans_queue_handle = xQueueCreate(1, sizeof(spi_transaction_context_t));
-    assert(s_trans_queue_handle != NULL);
-    s_trans_result_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(size_t));
-    assert(s_trans_result_handle != NULL);
-    s_trans_error_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(esp_err_t));
-    assert(s_trans_error_handle != NULL);
-    s_in_flight_mailbox_handle = xQueueCreate(1, sizeof(size_t));
-    assert(s_in_flight_mailbox_handle != NULL);
+//     // initialize queues
+//     s_trans_queue_handle = xQueueCreate(1, sizeof(spi_transaction_context_t));
+//     assert(s_trans_queue_handle != NULL);
+//     s_trans_result_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(size_t));
+//     assert(s_trans_result_handle != NULL);
+//     s_trans_error_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(esp_err_t));
+//     assert(s_trans_error_handle != NULL);
+//     s_in_flight_mailbox_handle = xQueueCreate(1, sizeof(size_t));
+//     assert(s_in_flight_mailbox_handle != NULL);
 
-    // spi task
-    while (true) {
-        spi_transaction_context_t trans_ctx;
-        if (xQueueReceive(s_trans_queue_handle, &trans_ctx, RECV_TRANS_QUEUE_TIMEOUT_TICKS)) {
-            // update in-flight count
-            assert(trans_ctx.trans != nullptr);
-            assert(trans_ctx.size <= ctx->if_cfg.queue_size);
-            xQueueOverwrite(s_in_flight_mailbox_handle, &trans_ctx.size);
+//     // spi task
+//     while (true) {
+//         spi_transaction_context_t trans_ctx;
+//         if (xQueueReceive(s_trans_queue_handle, &trans_ctx, RECV_TRANS_QUEUE_TIMEOUT_TICKS)) {
+//             // update in-flight count
+//             assert(trans_ctx.trans != nullptr);
+//             assert(trans_ctx.size <= ctx->if_cfg.queue_size);
+//             xQueueOverwrite(s_in_flight_mailbox_handle, &trans_ctx.size);
 
-            // execute new transaction if transaction request received from main task
-            ESP_LOGD(TAG, "new transaction request received (size = %u)", trans_ctx.size);
-            std::vector<esp_err_t> errs;
-            errs.reserve(trans_ctx.size);
-            for (size_t i = 0; i < trans_ctx.size; ++i) {
-                spi_slave_transaction_t *trans = &trans_ctx.trans[i];
-                esp_err_t err = spi_slave_queue_trans(ctx->host, trans, trans_ctx.timeout_ticks);
-                if (err != ESP_OK) {
-                    ESP_LOGE(TAG, "failed to execute spi_slave_queue_trans(): 0x%X", err);
-                }
-                errs.push_back(err);
-            }
+//             // execute new transaction if transaction request received from main task
+//             ESP_LOGD(TAG, "new transaction request received (size = %u)", trans_ctx.size);
+//             std::vector<esp_err_t> errs;
+//             errs.reserve(trans_ctx.size);
+//             for (size_t i = 0; i < trans_ctx.size; ++i) {
+//                 spi_slave_transaction_t *trans = &trans_ctx.trans[i];
+//                 esp_err_t err = spi_slave_queue_trans(ctx->host, trans, trans_ctx.timeout_ticks);
+//                 if (err != ESP_OK) {
+//                     ESP_LOGE(TAG, "failed to execute spi_slave_queue_trans(): 0x%X", err);
+//                 }
+//                 errs.push_back(err);
+//             }
 
-            // wait for the completion of all of the queued transactions
-            // reset result/error queue first
-            xQueueReset(s_trans_result_handle);
-            xQueueReset(s_trans_error_handle);
-            for (size_t i = 0; i < trans_ctx.size; ++i) {
-                // wait for completion of next transaction
-                size_t num_received_bytes = 0;
-                if (errs[i] == ESP_OK) {
-                    spi_slave_transaction_t *rtrans;
-                    esp_err_t err = spi_slave_get_trans_result(ctx->host, &rtrans, trans_ctx.timeout_ticks);
-                    if (err != ESP_OK) {
-                        ESP_LOGE(TAG, "failed to execute spi_slave_get_trans_result(): 0x%X", err);
-                    } else {
-                        num_received_bytes = rtrans->trans_len / 8; // bit -> byte
-                        ESP_LOGD(TAG, "transaction complete: %d bits (%d bytes) received", rtrans->trans_len, num_received_bytes);
-                    }
-                } else {
-                    ESP_LOGE(TAG, "skip spi_slave_get_trans_result() because queue was failed: index = %u", i);
-                }
+//             // wait for the completion of all of the queued transactions
+//             // reset result/error queue first
+//             xQueueReset(s_trans_result_handle);
+//             xQueueReset(s_trans_error_handle);
+//             for (size_t i = 0; i < trans_ctx.size; ++i) {
+//                 // wait for completion of next transaction
+//                 size_t num_received_bytes = 0;
+//                 if (errs[i] == ESP_OK) {
+//                     spi_slave_transaction_t *rtrans;
+//                     esp_err_t err = spi_slave_get_trans_result(ctx->host, &rtrans, trans_ctx.timeout_ticks);
+//                     if (err != ESP_OK) {
+//                         ESP_LOGE(TAG, "failed to execute spi_slave_get_trans_result(): 0x%X", err);
+//                     } else {
+//                         num_received_bytes = rtrans->trans_len / 8; // bit -> byte
+//                         ESP_LOGD(TAG, "transaction complete: %d bits (%d bytes) received", rtrans->trans_len, num_received_bytes);
+//                     }
+//                 } else {
+//                     ESP_LOGE(TAG, "skip spi_slave_get_trans_result() because queue was failed: index = %u", i);
+//                 }
 
-                // send the received bytes back to main task
-                if (!xQueueSend(s_trans_result_handle, &num_received_bytes, SEND_TRANS_RESULT_TIMEOUT_TICKS)) {
-                    ESP_LOGE(TAG, "failed to send a number of received bytes to main task: %d", err);
-                }
-                // send the transaction error back to main task
-                if (!xQueueSend(s_trans_error_handle, &errs[i], SEND_TRANS_ERROR_TIMEOUT_TICKS)) {
-                    ESP_LOGE(TAG, "failed to send a transaction error to main task: %d", err);
-                }
+//                 // send the received bytes back to main task
+//                 if (!xQueueSend(s_trans_result_handle, &num_received_bytes, SEND_TRANS_RESULT_TIMEOUT_TICKS)) {
+//                     ESP_LOGE(TAG, "failed to send a number of received bytes to main task: %d", err);
+//                 }
+//                 // send the transaction error back to main task
+//                 if (!xQueueSend(s_trans_error_handle, &errs[i], SEND_TRANS_ERROR_TIMEOUT_TICKS)) {
+//                     ESP_LOGE(TAG, "failed to send a transaction error to main task: %d", err);
+//                 }
 
-                // update in-flight count
-                const size_t num_rest_in_flight = trans_ctx.size - (i + 1);
-                xQueueOverwrite(s_in_flight_mailbox_handle, &num_rest_in_flight);
-            }
+//                 // update in-flight count
+//                 const size_t num_rest_in_flight = trans_ctx.size - (i + 1);
+//                 xQueueOverwrite(s_in_flight_mailbox_handle, &num_rest_in_flight);
+//             }
 
-            // should be deleted because the ownership is moved from main task
-            delete[] trans_ctx.trans;
+//             // should be deleted because the ownership is moved from main task
+//             delete[] trans_ctx.trans;
 
-            ESP_LOGD(TAG, "all requested transactions completed");
-        }
+//             ESP_LOGD(TAG, "all requested transactions completed");
+//         }
 
-        // terminate task if requested
-        if (xTaskNotifyWait(0, 0, NULL, 0) == pdTRUE) {
-            break;
-        }
-    }
+//         // terminate task if requested
+//         if (xTaskNotifyWait(0, 0, NULL, 0) == pdTRUE) {
+//             break;
+//         }
+//     }
 
-    ESP_LOGD(TAG, "terminate spi task as requested by the main task");
+//     ESP_LOGD(TAG, "terminate spi task as requested by the main task");
 
-    vQueueDelete(s_in_flight_mailbox_handle);
-    vQueueDelete(s_trans_result_handle);
-    vQueueDelete(s_trans_error_handle);
-    vQueueDelete(s_trans_queue_handle);
+//     vQueueDelete(s_in_flight_mailbox_handle);
+//     vQueueDelete(s_trans_result_handle);
+//     vQueueDelete(s_trans_error_handle);
+//     vQueueDelete(s_trans_queue_handle);
 
-    spi_slave_free(ctx->host);
+//     spi_slave_free(ctx->host);
 
-    xTaskNotifyGive(ctx->main_task_handle);
-    ESP_LOGD(TAG, "spi_slave_task finished");
+//     xTaskNotifyGive(ctx->main_task_handle);
+//     ESP_LOGD(TAG, "spi_slave_task finished");
 
-    vTaskDelete(NULL);
-}
+//     vTaskDelete(NULL);
+// }
 
 class Slave
 {
     spi_slave_context_t ctx;
     std::vector<spi_slave_transaction_t> transactions;
     spi_slave_cb_user_context_t cb_user_ctx;
-    TaskHandle_t spi_task_handle {NULL};
+    TaskHandle_t spi_task_handle{NULL};
 
 public:
     /// @brief initialize SPI with the default pin assignment for HSPI, or VSPI
@@ -300,12 +306,14 @@ public:
     /// @brief stop spi slave (terminate spi_slave_task and deinitialize spi)
     void end()
     {
-        if (this->spi_task_handle == NULL) {
+        if (this->spi_task_handle == NULL)
+        {
             ESP_LOGW(TAG, "spi_slave_task already terminated");
             return;
         }
         xTaskNotifyGive(this->spi_task_handle);
-        if (xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        if (xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(5000)) != pdTRUE)
+        {
             ESP_LOGW(TAG, "timeout waiting for the termination of spi_slave_task");
         }
         this->spi_task_handle = NULL;
@@ -316,11 +324,12 @@ public:
     /// @return pointer to the allocated dma buffer
     static uint8_t *allocDMABuffer(size_t n_bytes)
     {
-        if (n_bytes % 4 != 0) {
+        if (n_bytes % 4 != 0)
+        {
             ESP_LOGW(TAG, "failed to allocate dma buffer: must be multiples of 4 bytes");
             return nullptr;
         }
-        return static_cast<uint8_t*>(heap_caps_calloc(n_bytes, sizeof(uint8_t), MALLOC_CAP_DMA));
+        return static_cast<uint8_t *>(heap_caps_calloc(n_bytes, sizeof(uint8_t), MALLOC_CAP_DMA));
     }
 
     /// @brief execute one transaction and wait for the completion
@@ -330,7 +339,7 @@ public:
     /// @param timeout_ms timeout in milliseconds
     /// @return the size of received bytes
     /// @note  this function is blocking until the completion of transmission
-    size_t transfer(const uint8_t* tx_buf, uint8_t* rx_buf, size_t size, uint32_t timeout_ms = 0)
+    size_t transfer(const uint8_t *tx_buf, uint8_t *rx_buf, size_t size, uint32_t timeout_ms = 0)
     {
         return this->transfer(0, tx_buf, rx_buf, size, timeout_ms);
     }
@@ -344,18 +353,22 @@ public:
     /// @note  this function is blocking until the completion of transmission
     size_t transfer(
         uint32_t flags,
-        const uint8_t* tx_buf,
-        uint8_t* rx_buf,
+        const uint8_t *tx_buf,
+        uint8_t *rx_buf,
         size_t size,
-        uint32_t timeout_ms
-    ) {
-        if (!this->queue(flags, tx_buf, rx_buf, size)) {
+        uint32_t timeout_ms)
+    {
+        if (!this->queue(flags, tx_buf, rx_buf, size))
+        {
             return 0;
         }
         const auto results = this->wait(timeout_ms);
-        if (results.empty()) {
+        if (results.empty())
+        {
             return 0;
-        } else {
+        }
+        else
+        {
             return results[results.size() - 1];
         }
     }
@@ -369,7 +382,7 @@ public:
     /// @note   If the size of queued transactions exceeds pre-defined queue_size,
     ///         automatically wait for the completion of transmission and results are stored in the background.
     ///         The results are cleared when the next transaction is queued.
-    bool queue(const uint8_t* tx_buf, uint8_t* rx_buf, size_t size)
+    bool queue(const uint8_t *tx_buf, uint8_t *rx_buf, size_t size)
     {
         return this->queue(0, tx_buf, rx_buf, size);
     }
@@ -385,15 +398,17 @@ public:
     ///         The results are cleared when the next transaction is queued.
     bool queue(
         uint32_t flags,
-        const uint8_t* tx_buf,
-        uint8_t* rx_buf,
-        size_t size
-    ) {
-        if (size % 4 != 0) {
+        const uint8_t *tx_buf,
+        uint8_t *rx_buf,
+        size_t size)
+    {
+        if (size % 4 != 0)
+        {
             ESP_LOGW(TAG, "failed to queue transaction: buffer size must be multiples of 4 bytes");
             return false;
         }
-        if (this->transactions.size() >= this->ctx.if_cfg.queue_size) {
+        if (this->transactions.size() >= this->ctx.if_cfg.queue_size)
+        {
             ESP_LOGW(TAG, "failed to queue transaction: queue is full - only %u transactions can be queued at once", this->ctx.if_cfg.queue_size);
             return false;
         }
@@ -408,7 +423,8 @@ public:
     std::vector<size_t> wait(uint32_t timeout_ms = 0)
     {
         size_t num_will_be_queued = this->transactions.size();
-        if (!this->trigger(timeout_ms)) {
+        if (!this->trigger(timeout_ms))
+        {
             return std::vector<size_t>();
         }
         return this->waitTransaction(num_will_be_queued);
@@ -421,28 +437,32 @@ public:
     /// @return true if the transaction is queued successfully, false otherwise
     bool trigger(uint32_t timeout_ms = 0)
     {
-        if (this->transactions.empty()) {
+        if (this->transactions.empty())
+        {
             ESP_LOGW(TAG, "failed to trigger transaction: no transaction is queued");
             return false;
         }
-        if (this->numTransactionsInFlight() > 0) {
+        if (this->numTransactionsInFlight() > 0)
+        {
             ESP_LOGW(TAG, "failed to trigger transaction: there are already in-flight transactions");
             return false;
         }
 
-        spi_transaction_context_t trans_ctx {
+        spi_transaction_context_t trans_ctx{
             .trans = new spi_slave_transaction_t[this->transactions.size()],
             .size = this->transactions.size(),
             .timeout_ticks = timeout_ms == 0 ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms),
         };
-        for (size_t i = 0; i < this->transactions.size(); i++) {
+        for (size_t i = 0; i < this->transactions.size(); i++)
+        {
             trans_ctx.trans[i] = std::move(this->transactions[i]);
         }
         // NOTE: spi_transaction_ext_t should be delete inside of spi task after use
         int ret = xQueueSend(s_trans_queue_handle, &trans_ctx, SEND_TRANS_QUEUE_TIMEOUT_TICKS);
         // clearing transactions is safe because data was moved to trans_ctx
         this->transactions.clear();
-        if (!ret) {
+        if (!ret)
+        {
             ESP_LOGE(TAG, "failed to queue transaction: transaction queue between main and spi task is full");
             return false;
         }
@@ -477,11 +497,15 @@ public:
     /// @note this method pops front of the result queue
     size_t numBytesReceived()
     {
-        if (this->numTransactionsCompleted() > 0) {
+        if (this->numTransactionsCompleted() > 0)
+        {
             size_t num_received_bytes = 0;
-            if (xQueueReceive(s_trans_result_handle, &num_received_bytes, RECV_TRANS_RESULT_TIMEOUT_TICKS)) {
+            if (xQueueReceive(s_trans_result_handle, &num_received_bytes, RECV_TRANS_RESULT_TIMEOUT_TICKS))
+            {
                 return num_received_bytes;
-            } else {
+            }
+            else
+            {
                 ESP_LOGE(TAG, "failed to received queued result");
                 return 0;
             }
@@ -497,7 +521,8 @@ public:
         std::vector<size_t> results;
         const size_t num_results = this->numTransactionsCompleted();
         results.reserve(num_results);
-        for (size_t i = 0; i < num_results; ++i) {
+        for (size_t i = 0; i < num_results; ++i)
+        {
             results.emplace_back(this->numBytesReceived());
         }
         return results;
@@ -508,11 +533,15 @@ public:
     /// @note this method pops front of the error queue
     esp_err_t error()
     {
-        if (this->numTransactionErrors() > 0) {
+        if (this->numTransactionErrors() > 0)
+        {
             esp_err_t err;
-            if (xQueueReceive(s_trans_error_handle, &err, RECV_TRANS_ERROR_TIMEOUT_TICKS)) {
+            if (xQueueReceive(s_trans_error_handle, &err, RECV_TRANS_ERROR_TIMEOUT_TICKS))
+            {
                 return err;
-            } else {
+            }
+            else
+            {
                 ESP_LOGE(TAG, "failed to receive queued error");
                 return ESP_FAIL;
             }
@@ -528,7 +557,8 @@ public:
         std::vector<esp_err_t> errs;
         const size_t num_errs = this->numTransactionErrors();
         errs.reserve(num_errs);
-        for (size_t i = 0; i < num_errs; ++i) {
+        for (size_t i = 0; i < num_errs; ++i)
+        {
             errs.emplace_back(this->error());
         }
         return errs;
@@ -579,9 +609,12 @@ public:
     /// @param dma_chan dma channel (SPI_DMA_CH1 or SPI_DMA_CH2 only)
     void setDMAChannel(spi_common_dma_t dma_chan)
     {
-        if ((dma_chan == SPI_DMA_CH1) || (dma_chan == SPI_DMA_CH2) || (dma_chan == SPI_DMA_CH_AUTO)) {
+        if ((dma_chan == SPI_DMA_CH1) || (dma_chan == SPI_DMA_CH2) || (dma_chan == SPI_DMA_CH_AUTO))
+        {
             this->ctx.dma_chan = dma_chan;
-        } else {
+        }
+        else
+        {
             ESP_LOGW(TAG, "invalid dma channel %d: make sure to select SPI_DMA_CH1, SPI_DMA_CH2 or SPI_DMA_CH_AUTO", dma_chan);
         }
     }
@@ -633,25 +666,26 @@ public:
 private:
     static spi_host_device_t hostFromBusNumber(uint8_t spi_bus)
     {
-        switch (spi_bus) {
-            case FSPI:
+        switch (spi_bus)
+        {
+        case FSPI:
 #ifdef CONFIG_IDF_TARGET_ESP32
-                return SPI1_HOST;
+            return SPI1_HOST;
 #else
-                return SPI2_HOST;
+            return SPI2_HOST;
 #endif
-            case HSPI:
+        case HSPI:
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3)
-                return SPI2_HOST;
+            return SPI2_HOST;
 #else
-                return SPI3_HOST;
+            return SPI3_HOST;
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32
-            case VSPI:
-                return SPI3_HOST;
+        case VSPI:
+            return SPI3_HOST;
 #endif
-            default:
-                return SPI2_HOST;
+        default:
+            return SPI2_HOST;
         }
     }
 
@@ -664,8 +698,9 @@ private:
 
         // create spi slave task
         std::string task_name = std::string("spi_slave_task_") + std::to_string(this->ctx.if_cfg.spics_io_num);
-        int ret = xTaskCreatePinnedToCore(spi_slave_task, task_name.c_str(), SPI_SLAVE_TASK_STASCK_SIZE, static_cast<void*>(&this->ctx), SPI_SLAVE_TASK_PRIORITY, &this->spi_task_handle, 1);
-        if (ret != pdPASS) {
+        int ret = xTaskCreatePinnedToCore(spi_slave_task, task_name.c_str(), SPI_SLAVE_TASK_STASCK_SIZE, static_cast<void *>(&this->ctx), SPI_SLAVE_TASK_PRIORITY, &this->spi_task_handle, 1);
+        if (ret != pdPASS)
+        {
             ESP_LOGE(TAG, "failed to create spi_slave_task: %d", ret);
             return false;
         }
@@ -673,13 +708,13 @@ private:
         return true;
     }
 
-    spi_slave_transaction_t generateTransaction(uint32_t flags, size_t size, const uint8_t* tx_buf, uint8_t* rx_buf)
+    spi_slave_transaction_t generateTransaction(uint32_t flags, size_t size, const uint8_t *tx_buf, uint8_t *rx_buf)
     {
         spi_slave_transaction_t trans;
 
         // trans.flags = flags;
-        trans.length = 8 * size;  // in bit size
-        trans.trans_len = 0;      // will be written after transaction
+        trans.length = 8 * size; // in bit size
+        trans.trans_len = 0;     // will be written after transaction
         trans.tx_buffer = (tx_buf == nullptr) ? NULL : tx_buf;
         trans.rx_buffer = (rx_buf == nullptr) ? NULL : rx_buf;
         trans.user = &this->cb_user_ctx; // user-defined callback and arg
@@ -687,7 +722,7 @@ private:
         return trans;
     }
 
-    void queueTransaction(uint32_t flags, size_t size, const uint8_t* tx_buf, uint8_t* rx_buf)
+    void queueTransaction(uint32_t flags, size_t size, const uint8_t *tx_buf, uint8_t *rx_buf)
     {
         spi_slave_transaction_t trans = generateTransaction(flags, size, tx_buf, rx_buf);
         this->transactions.push_back(std::move(trans));
@@ -696,7 +731,8 @@ private:
     std::vector<size_t> waitTransaction(size_t num_will_be_queued)
     {
         // transactions inside of spi task will be timeout if failed in the background
-        while (!this->hasTransactionsCompletedAndAllResultsReady(num_will_be_queued)) {
+        while (!this->hasTransactionsCompletedAndAllResultsReady(num_will_be_queued))
+        {
             vTaskDelay(1);
         }
         return this->numBytesReceivedAll();
@@ -707,4 +743,4 @@ ARDUINO_ESP32_DMA_SPI_NAMESPACE_END
 
 namespace ESP32DMASPI = arduino::esp32::spi::dma;
 
-#endif  // ESP32DMASPI_SLAVE_H
+#endif // ESP32DMASPI_SLAVE_H
