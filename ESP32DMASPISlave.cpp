@@ -4,6 +4,11 @@
 
 ARDUINO_ESP32_DMA_SPI_NAMESPACE_BEGIN
 
+QueueHandle_t Slave::s_trans_result_handle = NULL;
+QueueHandle_t Slave::s_trans_error_handle = NULL;
+QueueHandle_t Slave::s_trans_queue_handle = NULL;
+QueueHandle_t Slave::s_in_flight_mailbox_handle = NULL;
+
 void IRAM_ATTR spi_slave_post_setup_cb(spi_slave_transaction_t *trans)
 {
     spi_slave_cb_user_context_t *user_ctx = static_cast<spi_slave_cb_user_context_t *>(trans->user);
@@ -33,25 +38,31 @@ void spi_slave_task(void *arg)
     assert(err == ESP_OK);
 
     // initialize queues
-    s_trans_queue_handle = xQueueCreate(1, sizeof(spi_transaction_context_t));
-    assert(s_trans_queue_handle != NULL);
-    s_trans_result_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(size_t));
-    assert(s_trans_result_handle != NULL);
-    s_trans_error_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(esp_err_t));
-    assert(s_trans_error_handle != NULL);
-    s_in_flight_mailbox_handle = xQueueCreate(1, sizeof(size_t));
-    assert(s_in_flight_mailbox_handle != NULL);
+    Slave::s_trans_queue_handle = xQueueCreate(1, sizeof(spi_transaction_context_t));
+    assert(Slave::s_trans_queue_handle != NULL);
+    Slave::s_trans_result_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(size_t));
+    assert(Slave::s_trans_result_handle != NULL);
+    Slave::s_trans_error_handle = xQueueCreate(ctx->if_cfg.queue_size, sizeof(esp_err_t));
+    assert(Slave::s_trans_error_handle != NULL);
+    Slave::s_in_flight_mailbox_handle = xQueueCreate(1, sizeof(size_t));
+    assert(Slave::s_in_flight_mailbox_handle != NULL);
 
     // spi task
     while (true)
     {
         spi_transaction_context_t trans_ctx;
-        if (xQueueReceive(s_trans_queue_handle, &trans_ctx, RECV_TRANS_QUEUE_TIMEOUT_TICKS))
+        if (Slave::s_trans_queue_handle == NULL)
+        {
+            ESP_LOGE(TAG, "failed to create a queue for transaction context");
+            vTaskDelay(2 / portTICK_PERIOD_MS);
+            continue;
+        }
+        if (xQueueReceive(Slave::s_trans_queue_handle, &trans_ctx, RECV_TRANS_QUEUE_TIMEOUT_TICKS))
         {
             // update in-flight count
             assert(trans_ctx.trans != nullptr);
             assert(trans_ctx.size <= ctx->if_cfg.queue_size);
-            xQueueOverwrite(s_in_flight_mailbox_handle, &trans_ctx.size);
+            xQueueOverwrite(Slave::s_in_flight_mailbox_handle, &trans_ctx.size);
 
             // execute new transaction if transaction request received from main task
             ESP_LOGD(TAG, "new transaction request received (size = %u)", trans_ctx.size);
@@ -70,8 +81,8 @@ void spi_slave_task(void *arg)
 
             // wait for the completion of all of the queued transactions
             // reset result/error queue first
-            xQueueReset(s_trans_result_handle);
-            xQueueReset(s_trans_error_handle);
+            xQueueReset(Slave::s_trans_result_handle);
+            xQueueReset(Slave::s_trans_error_handle);
             for (size_t i = 0; i < trans_ctx.size; ++i)
             {
                 // wait for completion of next transaction
@@ -96,19 +107,19 @@ void spi_slave_task(void *arg)
                 }
 
                 // send the received bytes back to main task
-                if (!xQueueSend(s_trans_result_handle, &num_received_bytes, SEND_TRANS_RESULT_TIMEOUT_TICKS))
+                if (!xQueueSend(Slave::s_trans_result_handle, &num_received_bytes, SEND_TRANS_RESULT_TIMEOUT_TICKS))
                 {
                     ESP_LOGE(TAG, "failed to send a number of received bytes to main task: %d", err);
                 }
                 // send the transaction error back to main task
-                if (!xQueueSend(s_trans_error_handle, &errs[i], SEND_TRANS_ERROR_TIMEOUT_TICKS))
+                if (!xQueueSend(Slave::s_trans_error_handle, &errs[i], SEND_TRANS_ERROR_TIMEOUT_TICKS))
                 {
                     ESP_LOGE(TAG, "failed to send a transaction error to main task: %d", err);
                 }
 
                 // update in-flight count
                 const size_t num_rest_in_flight = trans_ctx.size - (i + 1);
-                xQueueOverwrite(s_in_flight_mailbox_handle, &num_rest_in_flight);
+                xQueueOverwrite(Slave::s_in_flight_mailbox_handle, &num_rest_in_flight);
             }
 
             // should be deleted because the ownership is moved from main task
@@ -126,10 +137,10 @@ void spi_slave_task(void *arg)
 
     ESP_LOGD(TAG, "terminate spi task as requested by the main task");
 
-    vQueueDelete(s_in_flight_mailbox_handle);
-    vQueueDelete(s_trans_result_handle);
-    vQueueDelete(s_trans_error_handle);
-    vQueueDelete(s_trans_queue_handle);
+    vQueueDelete(Slave::s_in_flight_mailbox_handle);
+    vQueueDelete(Slave::s_trans_result_handle);
+    vQueueDelete(Slave::s_trans_error_handle);
+    vQueueDelete(Slave::s_trans_queue_handle);
 
     spi_slave_free(ctx->host);
 
