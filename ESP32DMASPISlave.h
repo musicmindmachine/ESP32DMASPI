@@ -109,10 +109,10 @@ class Slave
     TaskHandle_t spi_task_handle{NULL};
 
 public:
-    static QueueHandle_t s_trans_queue_handle{NULL};
-    static QueueHandle_t s_trans_result_handle{NULL};
-    static QueueHandle_t s_trans_error_handle{NULL};
-    static QueueHandle_t s_in_flight_mailbox_handle{NULL};
+    static QueueHandle_t s_trans_queue_handle;
+    static QueueHandle_t s_trans_result_handle;
+    static QueueHandle_t s_trans_error_handle;
+    static QueueHandle_t s_in_flight_mailbox_handle;
 
     /// @brief initialize SPI with the default pin assignment for HSPI, or VSPI
     /// @param spi_bus HSPI, FSPI or VSPI
